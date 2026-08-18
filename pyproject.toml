@@ -1,0 +1,61 @@
+[project]
+name = "analyst"
+version = "0.1.0"
+description = "Reads a pile of related documents, builds one cited obligation register, checks it against rules, and keeps it current as new documents arrive."
+readme = "README.md"
+requires-python = ">=3.12"
+
+dependencies = [
+    "langgraph>=0.2.60",             # stage graph with a durable checkpointer
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.7.0",
+    "httpx>=0.28.0",
+    "tenacity>=9.0.0",
+    "typer>=0.15.0",
+    "rich>=13.9.0",
+    "pypdf>=5.1.0",                  # PDF sources
+    "python-docx>=1.1.2",            # DOCX sources
+    "mcp>=1.2.0",                    # machine interface
+    "pyyaml>=6.0.3",                 # the rules file is data, loaded not compiled
+    "langgraph-checkpoint-sqlite>=3.1.1",
+]
+
+[project.scripts]
+analyst = "analyst.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.25.0",
+    "ruff>=0.9.0",
+    "mypy>=1.14.0",
+    "types-pyyaml>=6.0.12",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.3,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+# These ship no type information.
+module = ["pypdf.*", "docx.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-ra --strict-markers"
