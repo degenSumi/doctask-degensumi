@@ -145,6 +145,10 @@ tool that writes to the register without decisions.
 
 Five synthetic documents: an agreement, an amendment, two invoices, a file note.
 
+![A committed register. Every row names the clause and line it came from, and
+the two conflicts below it show both documents side by side with what each one
+says in its own words.](docs/register.png)
+
 ```
 5 sources classified from content
 19 grounded facts, each located in the text it claims to come from
