@@ -104,6 +104,13 @@ uv run analyst ingest <run-id> inbox/AMD-02-MSA-2026-014.md   # a document arriv
 uv run analyst show <run-id>       # stages, register, cost
 ```
 
+![The gate. The register above is what would be committed; below it each item is
+put separately, carrying the clause and line it came from, and nothing moves
+until a key is pressed.](docs/gate.png)
+
+The register above the panels is a draft. It becomes the deliverable only from
+the decisions taken on the items below it, one at a time.
+
 **A run is named after what it reads**, not after a random id, so the second
 command is the first one again. A run stopped part way continues; a run already
 decided is reported rather than repeated, and any document sitting in the folder
