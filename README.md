@@ -171,7 +171,7 @@ against the terms that applied then rather than the terms that apply now.
 
 ## Claims, and where each is proven
 
-96 tests, no key, no database, no network.
+98 tests, no key, no database, no network.
 
 | Claim | Test |
 |---|---|
@@ -189,6 +189,7 @@ against the terms that applied then rather than the terms that apply now.
 | Two runs stay two runs | `test_two_runs_stay_separate` |
 | A clean corpus honestly reports nothing | `test_a_clean_corpus_reports_no_findings` |
 | A row reads the same whichever model wrote it | `test_both_phrasings_give_one_sentence` |
+| An update asks only about what moved | `test_it_asks_only_about_what_moved` |
 
 ```bash
 uv run pytest
@@ -287,9 +288,9 @@ into has to be the text the model was shown.
 - **No web review interface.** The gate is exposed at a terminal, over HTTP, and
   over MCP. A browser interface would be another adapter, not a rewrite.
 - **An update is driven by hand, not watched for.** A document that arrives is
-  added with `analyst ingest`, which reads only that document and re-checks only
-  what it touched. Nothing polls a folder, so a new file waits until someone
-  names it.
+  added with `analyst ingest`, which reads only that document, re-checks only
+  what it touched, and asks only about the rows that moved. Nothing polls a
+  folder, so a new file waits until someone names it.
 - **Concurrency is per run, not within one.** Documents are read in sequence.
 
 ## Cost

@@ -100,6 +100,39 @@ class TestAnArrival:
             f"the update cost {update_cost} calls against {full_run} for the full run"
         )
 
+    def test_it_asks_only_about_what_moved(self, finished: Any) -> None:
+        """A person's attention costs what the arrival costs, like the model's.
+
+        Putting every row back in front of someone is where a tired reviewer
+        waves through the one item that actually changed.
+        """
+        graph, _ = finished
+        state, delta = ingest(graph, "run-1", ARRIVAL)
+
+        proposals = [proposal_from(p) for p in state["proposals"]]
+        outstanding = [p for p in proposals if not p.is_decided]
+
+        assert outstanding, "the arrival produced nothing to decide"
+        assert len(outstanding) < len(proposals) / 2, (
+            f"{len(outstanding)} of {len(proposals)} items were put up again, "
+            f"though only {len(delta.added) + len(delta.changed)} rows moved"
+        )
+
+    def test_a_row_that_changed_is_asked_about_again(self, finished: Any) -> None:
+        """Carrying a decision forward is matched on content, not on identifier."""
+        graph, _ = finished
+        state, delta = ingest(graph, "run-1", ARRIVAL)
+
+        proposals = [proposal_from(p) for p in state["proposals"]]
+        undecided_ids = {p.proposal_id for p in proposals if not p.is_decided}
+        moved = {
+            f"row:{row.obligation_id}" for row in (*delta.added, *(n for _, n in delta.changed))
+        }
+
+        assert moved <= undecided_ids, (
+            f"a row that moved was carried forward: {moved - undecided_ids}"
+        )
+
     def test_findings_about_other_documents_survive(self, finished: Any) -> None:
         """Nobody re-examined INV-1002, so its finding must not disappear."""
         graph, _ = finished

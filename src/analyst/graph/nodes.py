@@ -435,59 +435,87 @@ class Nodes:
 
     def propose(self, state: RunState) -> dict[str, Any]:
         """Turn everything the run produced into items a person decides on."""
+        from analyst.domain.models import Decision
         from analyst.graph.serde import register_from
 
         register: Register = register_from(state.get("register") or {})
         sources = {sid: source_from(raw) for sid, raw in (state.get("sources") or {}).items()}
         quarantined = state.get("quarantined") or []
 
+        # A decision already taken on an item that has not moved is carried
+        # forward. An arrival that touched two rows should not put the other
+        # fourteen back in front of a person: that is the cost this path exists
+        # to avoid, and re-deciding them is where a tired reviewer waves through
+        # the one thing that did change.
+        previous = {p["proposal_id"]: p for p in (state.get("proposals") or [])}
+
+        def settled(proposal: Proposal) -> Proposal:
+            was = previous.get(proposal.proposal_id)
+            if was is None or not was.get("decision"):
+                return proposal
+
+            # Matched on content, not on id, so a row that changed under the
+            # same id is asked about again.
+            def body(item: dict[str, Any]) -> dict[str, Any]:
+                return {k: v for k, v in item.items() if k not in ("decision", "notes")}
+
+            if body(was) != body(proposal_to(proposal)):
+                return proposal
+            return proposal.with_decision(Decision(was["decision"]))
+
         proposals: list[Proposal] = []
 
         for row in register.obligations:
             proposals.append(
-                Proposal(
-                    proposal_id=f"row:{row.obligation_id}",
-                    kind=(
-                        ProposalKind.SUPERSEDE_OBLIGATION
-                        if row.superseded_by
-                        else ProposalKind.ADD_OBLIGATION
-                    ),
-                    summary=f"{row.party}: {row.duty}",
-                    support=row.support,
-                    reason=(
-                        f"superseded by {row.superseded_by}"
-                        if row.superseded_by
-                        else "current term"
-                    ),
-                    decided_by="reconcile",
-                    obligation=row,
-                    target_obligation_id=row.obligation_id if row.superseded_by else None,
+                settled(
+                    Proposal(
+                        proposal_id=f"row:{row.obligation_id}",
+                        kind=(
+                            ProposalKind.SUPERSEDE_OBLIGATION
+                            if row.superseded_by
+                            else ProposalKind.ADD_OBLIGATION
+                        ),
+                        summary=f"{row.party}: {row.duty}",
+                        support=row.support,
+                        reason=(
+                            f"superseded by {row.superseded_by}"
+                            if row.superseded_by
+                            else "current term"
+                        ),
+                        decided_by="reconcile",
+                        obligation=row,
+                        target_obligation_id=row.obligation_id if row.superseded_by else None,
+                    )
                 )
             )
 
         for index, conflict in enumerate(register.conflicts):
             proposals.append(
-                Proposal(
-                    proposal_id=f"conflict:{index}",
-                    kind=ProposalKind.CONFLICT,
-                    summary=f"{conflict.subject}: the documents disagree",
-                    support=conflict.support,
-                    reason=conflict.explanation,
-                    decided_by="reconcile",
-                    conflict=conflict,
+                settled(
+                    Proposal(
+                        proposal_id=f"conflict:{index}",
+                        kind=ProposalKind.CONFLICT,
+                        summary=f"{conflict.subject}: the documents disagree",
+                        support=conflict.support,
+                        reason=conflict.explanation,
+                        decided_by="reconcile",
+                        conflict=conflict,
+                    )
                 )
             )
 
         for index, finding in enumerate(register.findings):
             proposals.append(
-                Proposal(
-                    proposal_id=f"finding:{index}:{finding.rule_id}",
-                    kind=ProposalKind.FINDING,
-                    summary=f"{finding.rule_id} not satisfied",
-                    support=finding.support,
-                    reason=finding.statement,
-                    decided_by="examine",
-                    finding=finding,
+                settled(
+                    Proposal(
+                        proposal_id=f"finding:{index}:{finding.rule_id}",
+                        kind=ProposalKind.FINDING,
+                        summary=f"{finding.rule_id} not satisfied",
+                        support=finding.support,
+                        reason=finding.statement,
+                        decided_by="examine",
+                        finding=finding,
+                    )
                 )
             )
 
@@ -500,29 +528,35 @@ class Nodes:
                 continue
             first = detections[0]
             proposals.append(
-                Proposal(
-                    proposal_id=f"quarantine:{source_id}",
-                    kind=ProposalKind.QUARANTINE,
-                    summary=f"{source.filename} contains text addressed to the system",
-                    support=(
-                        Span(
-                            source_id=source_id,
-                            start=first.start,
-                            end=first.end,
-                            quote=first.quote,
-                            locator="quarantined passage",
+                settled(
+                    Proposal(
+                        proposal_id=f"quarantine:{source_id}",
+                        kind=ProposalKind.QUARANTINE,
+                        summary=f"{source.filename} contains text addressed to the system",
+                        support=(
+                            Span(
+                                source_id=source_id,
+                                start=first.start,
+                                end=first.end,
+                                quote=first.quote,
+                                locator="quarantined passage",
+                            ),
                         ),
-                    ),
-                    reason=(
-                        f"{len(detections)} passage(s) matched: "
-                        + ", ".join(sorted({d.pattern.name for d in detections}))
-                        + ". Reported as a finding; not acted on."
-                    ),
-                    decided_by="rule:instruction-detection",
+                        reason=(
+                            f"{len(detections)} passage(s) matched: "
+                            + ", ".join(sorted({d.pattern.name for d in detections}))
+                            + ". Reported as a finding; not acted on."
+                        ),
+                        decided_by="rule:instruction-detection",
+                    )
                 )
             )
 
-        log = [log_entry("propose", "prepared", f"{len(proposals)} items awaiting a decision")]
+        waiting = sum(1 for p in proposals if not p.is_decided)
+        detail = f"{waiting} items awaiting a decision"
+        if waiting != len(proposals):
+            detail += f", {len(proposals) - waiting} carried forward unchanged"
+        log = [log_entry("propose", "prepared", detail)]
         return {"proposals": [proposal_to(p) for p in proposals], "stage_log": log}
 
     # -- commit -------------------------------------------------------------

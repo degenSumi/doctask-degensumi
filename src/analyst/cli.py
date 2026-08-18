@@ -346,8 +346,20 @@ def _review(proposals: list[Any], *, approve_all: bool) -> list[Any] | None:
     """Put every item in front of a person, one at a time."""
     import sys
 
-    decided = []
-    for position, proposal in enumerate(proposals, start=1):
+    # Items decided on an earlier pass and unchanged since are kept, not asked
+    # about again. Only what is still open is put to a person.
+    outstanding = [p for p in proposals if not p.is_decided]
+    if not outstanding:
+        console.print("[green]Nothing new to decide.[/green]")
+        return list(proposals)
+    if len(outstanding) != len(proposals):
+        console.print(
+            f"[dim]{len(outstanding)} of {len(proposals)} items need a decision; "
+            f"the rest were decided when they were last read.[/dim]"
+        )
+
+    decided = [p for p in proposals if p.is_decided]
+    for position, proposal in enumerate(outstanding, start=1):
         if approve_all:
             decided.append(
                 proposal.with_decision(
@@ -363,7 +375,7 @@ def _review(proposals: list[Any], *, approve_all: bool) -> list[Any] | None:
             )
             return None
 
-        _show_proposal(position, len(proposals), proposal)
+        _show_proposal(position, len(outstanding), proposal)
 
         # Square brackets are Rich markup, so the key hints are escaped or they
         # are parsed as tags and stripped, leaving the prompt with no keys on it.

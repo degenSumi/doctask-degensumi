@@ -63,7 +63,6 @@ def ingest(graph: Any, run_id: str, path: Path) -> tuple[dict[str, Any], Registe
         {
             "sources": sources,
             "previous_register": values.get("register") or {},
-            "proposals": [],
         },
         as_node="ingest",
     )
