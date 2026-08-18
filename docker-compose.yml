@@ -1,0 +1,21 @@
+name: analyst
+
+services:
+  api:
+    build: .
+    environment:
+      # Run state lives on a volume rather than in the container's own
+      # filesystem, so a restart resumes a run rather than losing it.
+      CHECKPOINT_PATH: /data/runs.db
+      LLM_PROVIDER: ${LLM_PROVIDER:-fake}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./corpus:/app/corpus:ro
+      - ./inbox:/app/inbox
+      - run-state:/data
+
+volumes:
+  run-state:
