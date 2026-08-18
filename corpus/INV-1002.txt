@@ -1,0 +1,18 @@
+NORTHWIND SUPPLY CO.
+14 Harbour Row, Bristol
+
+INVOICE
+
+Invoice number: INV-1002
+Invoice date: 12 May 2026
+Bill to: Larkspur Media Ltd, 5 Ashfield Gardens, Leeds
+Agreement reference: MSA-2026-014
+
+Description                                        Amount
+--------------------------------------------------------
+Print production and fulfilment, May 2026       GBP 12,000
+--------------------------------------------------------
+Total due                                       GBP 12,000
+
+Payment terms: net 30 days from invoice date.
+Remit to: Northwind Supply Co., sort code 20-11-04, account 41882317.
