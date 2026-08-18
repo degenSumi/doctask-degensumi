@@ -1,0 +1,41 @@
+# The rules a person cares about, as data rather than code.
+# A new rule is an entry here. Nothing in the pipeline changes.
+
+rules:
+  - id: PO-REQUIRED
+    statement: >-
+      Every invoice must quote a purchase order number, as required by clause 5
+      of the master services agreement.
+    severity: blocking
+    applies_to: [invoice]
+
+  - id: TERMS-MATCH-CONTRACT
+    statement: >-
+      Payment terms stated on an invoice must match the payment terms in force
+      under the agreement on the invoice date, including any amendment.
+    severity: blocking
+    applies_to: [invoice]
+
+  - id: FEE-MATCH-CONTRACT
+    statement: >-
+      The amount billed on a periodic invoice must match the fee in force under
+      the agreement for that period, including any amendment.
+    severity: blocking
+    applies_to: [invoice]
+
+  - id: GOVERNING-LAW
+    statement: The agreement must state a governing law.
+    severity: advisory
+    applies_to: [contract]
+
+  - id: AMENDMENT-EFFECTIVE-DATE
+    statement: Every amendment must state the date from which it takes effect.
+    severity: blocking
+    applies_to: [amendment]
+
+  - id: DATA-PROTECTION-CLAUSE
+    statement: >-
+      The agreement must place a documented-instructions obligation on the
+      supplier for the processing of personal data.
+    severity: advisory
+    applies_to: [contract]
