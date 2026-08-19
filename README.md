@@ -261,6 +261,17 @@ The domain layer imports nothing from adapters. The model is asked only what a
 passage says; whether the pile agrees is decided in `reconcile.py`, in code, over
 facts that are already grounded.
 
+**Calls made about the pile**, where a different answer was defensible:
+
+- Only an amendment supersedes. Two agreements of equal standing that disagree
+  are a conflict for a person to settle, not something to resolve by date.
+- A document whose kind could not be worked out is still read for facts, but is
+  never allowed to supersede another document.
+- A date written in a format these documents do not use returns nothing rather
+  than a guess.
+- Approving a conflict, a finding or a quarantine records that a person saw it.
+  It moves no row, because those are reported rather than applied.
+
 ## Formats
 
 `.md`, `.txt`, `.docx`, `.pdf`. Anything else is refused by name rather than read
