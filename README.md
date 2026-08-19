@@ -100,9 +100,22 @@ uv run analyst run corpus          # runs, then asks about each item
 uv run analyst run corpus          # again: resumes if stopped, reports if finished
 uv run analyst run corpus --new    # read the same corpus as a separate run
 
-uv run analyst ingest <run-id> inbox/AMD-02-MSA-2026-014.md   # a document arrives
 uv run analyst show <run-id>       # stages, register, cost
 ```
+
+**Staying current is a second command, deliberately.** `run` reads the corpus,
+asks, commits and exits. `watch` is a process that keeps running, so it is
+started when you want it rather than every time a run finishes:
+
+```bash
+uv run analyst watch corpus        # keeps running, folds in each document as it lands
+uv run analyst ingest <run-id> inbox/AMD-02-MSA-2026-014.md   # or name one by hand
+```
+
+`watch` needs a run to add to, so `run` comes first. It then sweeps the folder
+on an interval and hands anything new to the same update path `ingest` uses:
+same delta, same gate, same cost. Ctrl-C stops it and loses nothing, because
+the run is checkpointed after every stage.
 
 ![The gate. The register above is what would be committed; below it each item is
 put separately, carrying the clause and line it came from, and nothing moves
@@ -138,7 +151,9 @@ uv run python -m analyst.mcp_server
 ```
 
 Seven MCP tools: `start_run`, `get_run`, `get_stages`, `list_proposals`,
-`decide`, `commit`, `get_register`.
+`decide`, `commit`, `get_register`. Starting, reading, deciding and committing
+a run are all here. Folding in a document that arrived is not: `watch` and
+`ingest` are at the terminal only.
 
 **A run is named the same way in every surface.** The terminal, HTTP and MCP all
 derive it from the corpus and rules being read, so the same documents land on the
@@ -169,9 +184,15 @@ says in its own words.](docs/register.png)
 effect 1 May. It was correct when it was raised, and the system measures it
 against the terms that applied then rather than the terms that apply now.
 
+**A sixth document arriving costs what a sixth document costs.** With `analyst
+watch` running, dropping `AMD-02-MSA-2026-014.md` into the folder spent 4 model
+calls against the 20 the full run spent, moved 2 rows, left 7 untouched and
+asked about 2 items out of 15. Untouched is compared by content digest and
+reported, not asserted, and the 13 items already decided keep their decisions.
+
 ## Claims, and where each is proven
 
-98 tests, no key, no database, no network.
+104 tests, no key, no database, no network.
 
 | Claim | Test |
 |---|---|
@@ -184,6 +205,8 @@ against the terms that applied then rather than the terms that apply now.
 | And not over HTTP or MCP either | `test_the_same_corpus_is_not_read_twice` |
 | Nothing commits without a decision | `test_committing_undecided_items_is_refused` |
 | Rejecting one leaves the rest | `test_rejecting_one_leaves_the_rest` |
+| An arrival is noticed, not named | `test_a_document_taken_is_not_offered_again` |
+| A file still being copied in waits | `test_a_file_that_grew_between_sweeps_waits` |
 | A program can drive the whole flow | `test_a_program_can_drive_the_whole_flow` |
 | Documents do not give orders | `test_its_instructions_are_not_obeyed` |
 | Two runs stay two runs | `test_two_runs_stay_separate` |
@@ -298,10 +321,15 @@ into has to be the text the model was shown.
   so the database went with it rather than being shipped unread.
 - **No web review interface.** The gate is exposed at a terminal, over HTTP, and
   over MCP. A browser interface would be another adapter, not a rewrite.
-- **An update is driven by hand, not watched for.** A document that arrives is
-  added with `analyst ingest`, which reads only that document, re-checks only
-  what it touched, and asks only about the rows that moved. Nothing polls a
-  folder, so a new file waits until someone names it.
+- **Arrivals are a CLI capability only.** `watch` and `ingest` are not on the
+  HTTP API or the MCP server, so an agent can start a run, decide and commit,
+  but cannot fold in a document that arrived. Both are the same call behind the
+  same gate; it is wiring, not design, and it is not written yet.
+- **The folder is polled, not subscribed to.** `analyst watch` sweeps the corpus
+  on an interval rather than taking an OS notification. Polling is one
+  dependency fewer and behaves the same on every machine, and a document is held
+  back until its size and timestamp hold still across two sweeps, so a file
+  still being copied in is not read half-written.
 - **Concurrency is per run, not within one.** Documents are read in sequence.
 
 ## Cost
