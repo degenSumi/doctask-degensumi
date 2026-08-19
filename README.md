@@ -26,7 +26,8 @@ the real problem is buried in noise.
 This system distinguishes them:
 
 - an amendment changing a term is a **supersession**, the documents working as intended
-- an invoice disagreeing with the term in force **on its own issue date** is a **conflict**, which is a person's problem
+- an invoice disagreeing with the term in force **on its own issue date** is a
+  **conflict**, which is a person's problem
 
 ## What a run does
 
@@ -42,6 +43,10 @@ corpus/  ─►  ingest      read every readable document
              propose     prepare every item for review
                     ─────  the run stops here  ─────
              commit      apply only what was approved
+
+an arrival ─►  watch     re-enters above carrying that one document
+                         every stage skips what it has already done
+                         the gate runs again; untouched rows are proven so
 ```
 
 ## Run it
@@ -56,9 +61,8 @@ uv run analyst watch corpus        # keep it current as documents arrive
 
 Two commands, and between them the three things this does. `run` reads the
 corpus, checks it against your rules, and stops before writing anything until
-every item has been decided. `watch` keeps the register current: a document that
-lands costs what that one document costs, not another full run, and the rows it
-did not affect are proven untouched rather than said to be.
+every item has been decided. `watch` keeps it current: a document that lands
+costs what that one document costs, not another full run.
 
 ### With a model
 
@@ -324,8 +328,8 @@ into has to be the text the model was shown.
   original text. Adequate for documents of this size, and not for a
   hundred-page agreement.
 - **Run state is checkpointed to SQLite, not Postgres.** The checkpointer is one
-  line either way. What Postgres was there to serve was retrieval, which is cut,
-  so the database went with it rather than being shipped unread.
+  line either way and run state is small. Postgres belongs here when retrieval
+  does, because a vector store is the reason to bring a bigger database.
 - **No web review interface.** The gate is exposed at a terminal, over HTTP, and
   over MCP. A browser interface would be another adapter, not a rewrite.
 - **Only the terminal watches.** `ingest` is on all three surfaces, but the
