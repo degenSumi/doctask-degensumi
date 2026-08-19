@@ -1,8 +1,8 @@
 """MCP interface.
 
 The same operations as the HTTP surface, exposed as tools so an agent can drive
-a whole run: read the pile, look at what was proposed, decide item by item, and
-commit.
+a whole run: read the pile, look at what was proposed, decide item by item,
+commit, and fold in a document that arrived afterwards.
 
 The gate is part of that flow rather than an exception to it. `commit` refuses
 while anything is undecided, so an agent driving this has to make the call
@@ -21,6 +21,8 @@ from typing import Any
 
 from mcp.server import MCPServer
 
+from analyst.adapters.loader import UnsupportedFormat
+from analyst.app import update
 from analyst.app.runs import run_id_for
 from analyst.domain.models import Decision
 from analyst.graph.build import compile_graph
@@ -198,6 +200,41 @@ def commit(run_id: str) -> str:
 
     _graph.invoke(None, config=_config(run_id))
     return json.dumps(_summary(run_id, _graph.get_state(_config(run_id))), indent=2)
+
+
+@mcp.tool()
+def ingest(run_id: str, path: str) -> str:
+    """Add a document that arrived to a run that has already produced a register.
+
+    Not a re-run: sources already read are not read again and rules already
+    checked are not checked again, so an arrival costs what an arrival costs.
+    The reply names what moved and counts what did not, compared by content
+    digest rather than asserted. The run is left at the gate, so call
+    `list_proposals` and `decide` next.
+    """
+    document = Path(path)
+    if not document.exists():
+        return json.dumps({"error": f"no such file: {path}"})
+
+    try:
+        _, delta = update.ingest(_graph, run_id, document)
+    except (update.NotUpdatable, UnsupportedFormat) as error:
+        return json.dumps({"error": str(error)})
+
+    return json.dumps(
+        {
+            "summary": delta.summary(),
+            "added": [o.duty for o in delta.added],
+            "changed": [after.duty for _, after in delta.changed],
+            "removed": [o.duty for o in delta.removed],
+            "untouched": delta.untouched_count,
+            "new_conflicts": len(delta.new_conflicts),
+            "new_findings": len(delta.new_findings),
+            "because_of": list(delta.because_of),
+            "run": _summary(run_id, _graph.get_state(_config(run_id))),
+        },
+        indent=2,
+    )
 
 
 @mcp.tool()
