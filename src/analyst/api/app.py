@@ -19,7 +19,10 @@ from typing import Any, Literal
 from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
 
+from analyst.adapters.loader import UnsupportedFormat
+from analyst.app import update
 from analyst.app.runs import run_id_for
+from analyst.domain.delta import RegisterDelta
 from analyst.domain.models import Decision
 from analyst.graph.build import compile_graph
 from analyst.graph.serde import proposal_from, proposal_to
@@ -71,6 +74,26 @@ class StartRun(BaseModel):
     fresh: bool = Field(default=False, description="Read the corpus again as a separate run.")
 
 
+class Arrival(BaseModel):
+    path: str = Field(description="The document that arrived, readable by this process.")
+
+
+class DeltaOut(BaseModel):
+    summary: str
+    added: list[str]
+    changed: list[str]
+    removed: list[str]
+    untouched: int = Field(description="Rows compared by content digest and found identical.")
+    new_conflicts: int
+    new_findings: int
+    because_of: list[str]
+
+
+class Ingested(BaseModel):
+    delta: DeltaOut
+    run: RunSummary
+
+
 class DecisionIn(BaseModel):
     proposal_id: str
     decision: Literal["approve", "reject", "defer"]
@@ -89,6 +112,19 @@ class RunSummary(BaseModel):
     findings: int
     committed: bool
     cost: dict[str, int]
+
+
+def _delta_out(delta: RegisterDelta) -> DeltaOut:
+    return DeltaOut(
+        summary=delta.summary(),
+        added=[o.duty for o in delta.added],
+        changed=[after.duty for _, after in delta.changed],
+        removed=[o.duty for o in delta.removed],
+        untouched=delta.untouched_count,
+        new_conflicts=len(delta.new_conflicts),
+        new_findings=len(delta.new_findings),
+        because_of=list(delta.because_of),
+    )
 
 
 def _summary(run_id: str, snapshot: Any) -> RunSummary:
@@ -168,6 +204,35 @@ def get_proposals(run_id: str) -> list[dict[str, Any]]:
 def get_register(run_id: str) -> dict[str, Any]:
     """The deliverable as it currently stands."""
     return dict(_require(run_id).values.get("register") or {})
+
+
+@app.post("/runs/{run_id}/documents", response_model=Ingested)
+def ingest(run_id: str, body: Arrival) -> Ingested:
+    """Add one document that arrived to a run that has already produced a register.
+
+    Not a re-run. Sources already read are not read again and rules already
+    checked are not checked again, so an arrival costs what an arrival costs.
+    The reply names what moved and counts what did not, compared by content
+    digest rather than asserted.
+
+    The run is left at the gate, exactly as a first run is: nothing a new
+    document implies reaches the register without a decision.
+    """
+    path = Path(body.path)
+    if not path.exists():
+        raise HTTPException(status_code=400, detail=f"no such file: {path}")
+
+    try:
+        _, delta = update.ingest(_graph, run_id, path)
+    except update.NotUpdatable as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except UnsupportedFormat as error:
+        raise HTTPException(status_code=415, detail=str(error)) from error
+
+    return Ingested(
+        delta=_delta_out(delta),
+        run=_summary(run_id, _graph.get_state(_config(run_id))),
+    )
 
 
 @app.post("/runs/{run_id}/decisions", response_model=RunSummary)
