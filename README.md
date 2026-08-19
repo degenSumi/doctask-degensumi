@@ -150,10 +150,10 @@ separate run.
 uv run python -m analyst.mcp_server
 ```
 
-Seven MCP tools: `start_run`, `get_run`, `get_stages`, `list_proposals`,
-`decide`, `commit`, `get_register`. Starting, reading, deciding and committing
-a run are all here. Folding in a document that arrived is not: `watch` and
-`ingest` are at the terminal only.
+Eight MCP tools: `start_run`, `get_run`, `get_stages`, `list_proposals`,
+`decide`, `commit`, `get_register`, `ingest`. Starting a run, reading it,
+deciding item by item, committing, and folding in a document that arrived
+afterwards — the whole flow, with no step that needs a terminal.
 
 **A run is named the same way in every surface.** The terminal, HTTP and MCP all
 derive it from the corpus and rules being read, so the same documents land on the
@@ -192,7 +192,7 @@ reported, not asserted, and the 13 items already decided keep their decisions.
 
 ## Claims, and where each is proven
 
-104 tests, no key, no database, no network.
+110 tests, no key, no database, no network.
 
 | Claim | Test |
 |---|---|
@@ -207,6 +207,8 @@ reported, not asserted, and the 13 items already decided keep their decisions.
 | Rejecting one leaves the rest | `test_rejecting_one_leaves_the_rest` |
 | An arrival is noticed, not named | `test_a_document_taken_is_not_offered_again` |
 | A file still being copied in waits | `test_a_file_that_grew_between_sweeps_waits` |
+| An arrival costs less than the pile | `test_a_program_can_fold_in_a_document_that_arrived` |
+| And reaches the gate like anything else | `test_the_arrival_stops_at_the_gate` |
 | A program can drive the whole flow | `test_a_program_can_drive_the_whole_flow` |
 | Documents do not give orders | `test_its_instructions_are_not_obeyed` |
 | Two runs stay two runs | `test_two_runs_stay_separate` |
@@ -321,10 +323,9 @@ into has to be the text the model was shown.
   so the database went with it rather than being shipped unread.
 - **No web review interface.** The gate is exposed at a terminal, over HTTP, and
   over MCP. A browser interface would be another adapter, not a rewrite.
-- **Arrivals are a CLI capability only.** `watch` and `ingest` are not on the
-  HTTP API or the MCP server, so an agent can start a run, decide and commit,
-  but cannot fold in a document that arrived. Both are the same call behind the
-  same gate; it is wiring, not design, and it is not written yet.
+- **Only the terminal watches.** `ingest` is on all three surfaces, but the
+  sweep that notices an arrival is at the terminal. A program on the HTTP or MCP
+  surface hands over a document it already knows about.
 - **The folder is polled, not subscribed to.** `analyst watch` sweeps the corpus
   on an interval rather than taking an OS notification. Polling is one
   dependency fewer and behaves the same on every machine, and a document is held
