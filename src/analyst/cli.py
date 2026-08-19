@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -17,6 +18,7 @@ from analyst.adapters.fake_model import FakePatternModel
 from analyst.adapters.loader import UnsupportedFormat, discover
 from analyst.app import update
 from analyst.app.runs import run_id_for
+from analyst.app.watch import Arrivals
 from analyst.domain.delta import RegisterDelta
 from analyst.domain.models import Decision, ProposalKind
 from analyst.graph.build import compile_graph
@@ -184,24 +186,91 @@ def ingest(
     graph, connection, _ = _graph(database)
     try:
         try:
-            state, delta = update.ingest(graph, run_id, document)
+            _fold_in(graph, run_id, document, approve_all=yes)
         except (update.NotUpdatable, UnsupportedFormat) as error:
             console.print(f"[red]{error}[/red]")
             raise typer.Exit(code=1) from error
-
-        console.print(f"[dim]{document.name} into run {run_id}[/dim]\n")
-        _show_delta(delta)
-
-        proposals = [proposal_from(p) for p in state.get("proposals") or []]
-        if proposals:
-            decided = _review(proposals, approve_all=yes)
-            if decided is None:
-                console.print("\n[yellow]Stopped. Nothing was written.[/yellow]")
-                return
-            graph.update_state(_config(run_id), {"proposals": [proposal_to(p) for p in decided]})
-            _show_outcome(graph.invoke(None, config=_config(run_id)))
     finally:
         connection.close()
+
+
+@app.command()
+def watch(
+    corpus: Annotated[Path, typer.Argument(help="Folder to watch for new documents.")] = Path(
+        "corpus"
+    ),
+    rules: Annotated[Path, typer.Option(help="Rules file the run was checked against.")] = Path(
+        "corpus/rules/vendor-billing-checklist.yaml"
+    ),
+    run_id: Annotated[str | None, typer.Option(help="Watch on behalf of a given run.")] = None,
+    database: Annotated[Path, typer.Option(help="Where run state is kept.")] = Path("runs.db"),
+    interval: Annotated[float, typer.Option(help="Seconds between sweeps.")] = 2.0,
+    yes: Annotated[
+        bool, typer.Option("--yes", help="Approve every register row without asking.")
+    ] = False,
+) -> None:
+    """Watch a folder and fold each document into the run as it arrives.
+
+    An arrival takes the same path `ingest` takes and costs what an arrival
+    costs. Ctrl-C stops watching, and stopping loses nothing: the run is
+    checkpointed after every stage, so the next sweep picks up where this one
+    left off.
+    """
+    identifier = run_id or run_id_for(corpus, rules)
+    graph, connection, provider = _graph(database)
+
+    try:
+        state = graph.get_state(_config(identifier))
+        if not state.values:
+            console.print(f"[red]No run with id {identifier}.[/red]")
+            console.print(f"[dim]start one with: analyst run {corpus}[/dim]")
+            raise typer.Exit(code=1)
+
+        arrivals = Arrivals(known=set(state.values.get("sources") or {}))
+        console.print(f"[dim]watching {corpus} for run {identifier}  ·  {provider}[/dim]")
+        console.print(
+            f"[dim]{len(arrivals.known)} document(s) already read. ctrl-c to stop.[/dim]\n"
+        )
+
+        while True:
+            for path in arrivals.sweep(corpus):
+                # Marked read before it is read, so a document this run cannot
+                # take is reported once rather than on every sweep from now on.
+                arrivals.accept(path.stem)
+                console.print(f"[green]arrived:[/green] {path.name}\n")
+                try:
+                    if not _fold_in(graph, identifier, path, approve_all=yes):
+                        return
+                except (update.NotUpdatable, UnsupportedFormat) as error:
+                    console.print(f"[red]{error}[/red]\n")
+                console.print("[dim]watching.[/dim]\n")
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        console.print("\n[dim]stopped watching.[/dim]")
+    finally:
+        connection.close()
+
+
+def _fold_in(graph: Any, run_id: str, document: Path, *, approve_all: bool) -> bool:
+    """Add one document to a run, show what moved, and take the decisions.
+
+    Returns False when the person quit at the gate, so a caller working through
+    several arrivals stops rather than moving on to the next one.
+    """
+    state, delta = update.ingest(graph, run_id, document)
+
+    console.print(f"[dim]{document.name} into run {run_id}[/dim]\n")
+    _show_delta(delta)
+
+    proposals = [proposal_from(p) for p in state.get("proposals") or []]
+    if proposals:
+        decided = _review(proposals, approve_all=approve_all)
+        if decided is None:
+            console.print("\n[yellow]Stopped. Nothing was written.[/yellow]")
+            return False
+        graph.update_state(_config(run_id), {"proposals": [proposal_to(p) for p in decided]})
+        _show_outcome(graph.invoke(None, config=_config(run_id)))
+    return True
 
 
 @app.command()
