@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 
 CORPUS = Path(__file__).resolve().parents[1] / "corpus"
 RULES = CORPUS / "rules" / "vendor-billing-checklist.yaml"
+ARRIVAL = Path(__file__).resolve().parents[1] / "inbox" / "AMD-02-MSA-2026-014.md"
 
 
 @pytest.fixture
@@ -173,6 +174,56 @@ class TestHttpSurface:
         assert all(row["support"] for row in register["obligations"])
 
 
+class TestAnArrivalIsAnUpdate:
+    """A document arriving after the register exists costs what an arrival costs."""
+
+    def commit_everything(self, client: TestClient) -> None:
+        proposals = client.get("/runs/run-1/proposals").json()
+        decisions = [{"proposal_id": p["proposal_id"], "decision": "approve"} for p in proposals]
+        client.post("/runs/run-1/decisions", json={"decisions": decisions})
+        client.post("/runs/run-1/commit")
+
+    def test_a_program_can_fold_in_a_document_that_arrived(self, client: TestClient) -> None:
+        start(client)
+        self.commit_everything(client)
+        spent = client.get("/runs/run-1").json()["cost"]["calls"]
+
+        response = client.post("/runs/run-1/documents", json={"path": str(ARRIVAL)})
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["delta"]["added"] or body["delta"]["changed"]
+        assert body["delta"]["untouched"] > 0
+        assert ARRIVAL.stem in body["delta"]["because_of"]
+
+        after = client.get("/runs/run-1").json()["cost"]["calls"]
+        assert after - spent < spent, "an arrival cost as much as reading the whole pile"
+
+    def test_the_arrival_stops_at_the_gate(self, client: TestClient) -> None:
+        start(client)
+        self.commit_everything(client)
+        client.post("/runs/run-1/documents", json={"path": str(ARRIVAL)})
+
+        assert client.get("/runs/run-1").json()["awaiting_decision"] > 0
+        assert client.post("/runs/run-1/commit").status_code == 409
+
+    def test_the_same_document_is_not_read_twice(self, client: TestClient) -> None:
+        start(client)
+        self.commit_everything(client)
+        client.post("/runs/run-1/documents", json={"path": str(ARRIVAL)})
+
+        again = client.post("/runs/run-1/documents", json={"path": str(ARRIVAL)})
+
+        assert again.status_code == 409
+
+    def test_a_file_that_is_not_there_is_named_as_the_cause(self, client: TestClient) -> None:
+        start(client)
+        response = client.post("/runs/run-1/documents", json={"path": "nowhere/AMD-99.md"})
+
+        assert response.status_code == 400
+        assert "nowhere/AMD-99.md" in response.json()["detail"]
+
+
 class TestMcpSurface:
     """The same operations as tools, so an agent can drive a run."""
 
@@ -202,6 +253,7 @@ class TestMcpSurface:
             "decide",
             "commit",
             "get_register",
+            "ingest",
         }
 
     def test_the_same_corpus_is_not_read_twice(self, tools: Any) -> None:
@@ -232,6 +284,24 @@ class TestMcpSurface:
 
         assert final["committed"] is True
         assert final["obligations"] > 0
+
+    def test_an_agent_can_fold_in_a_document_that_arrived(self, tools: Any) -> None:
+        tools.start_run(corpus_dir=str(CORPUS), rules_path=str(RULES), run_id="run-m")
+        for item in json.loads(tools.list_proposals("run-m")):
+            tools.decide("run-m", item["proposal_id"], "approve")
+        tools.commit("run-m")
+
+        answer = json.loads(tools.ingest("run-m", str(ARRIVAL)))
+
+        assert answer["added"] or answer["changed"]
+        assert answer["untouched"] > 0
+        assert answer["run"]["awaiting_decision"] > 0, "an arrival must reach the gate too"
+
+    def test_a_file_that_is_not_there_is_named_as_the_cause(self, tools: Any) -> None:
+        tools.start_run(corpus_dir=str(CORPUS), rules_path=str(RULES), run_id="run-m")
+        answer = json.loads(tools.ingest("run-m", "nowhere/AMD-99.md"))
+
+        assert "nowhere/AMD-99.md" in answer["error"]
 
     def test_commit_is_refused_while_anything_is_undecided(self, tools: Any) -> None:
         tools.start_run(corpus_dir=str(CORPUS), rules_path=str(RULES), run_id="run-m")
