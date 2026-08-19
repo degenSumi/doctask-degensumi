@@ -25,8 +25,8 @@ the real problem is buried in noise.
 
 This system distinguishes them:
 
-- an amendment changing a term is a **supersession** — the documents working as intended
-- an invoice disagreeing with the term in force **on its own issue date** is a **conflict** — a person's problem
+- an amendment changing a term is a **supersession**, the documents working as intended
+- an invoice disagreeing with the term in force **on its own issue date** is a **conflict**, which is a person's problem
 
 ## What a run does
 
@@ -50,10 +50,15 @@ From a clone:
 
 ```bash
 uv sync
-uv run analyst run corpus
+uv run analyst run corpus          # read the pile, decide on every item
+uv run analyst watch corpus        # keep it current as documents arrive
 ```
 
-That is the whole system: it reads the corpus, stops, and asks about each item.
+Two commands, and between them the three things this does. `run` reads the
+corpus, checks it against your rules, and stops before writing anything until
+every item has been decided. `watch` keeps the register current: a document that
+lands costs what that one document costs, not another full run, and the rows it
+did not affect are proven untouched rather than said to be.
 
 ### With a model
 
@@ -76,8 +81,8 @@ what the tests use, which is why the suite needs no credentials and no network.
 
 The caveat, plainly: the stand-in recognises the phrasing of the sample corpus
 and nothing else. Give it the same clause worded differently and it reports
-nothing rather than guessing. It stands in for the one question a model is asked
-— what does this passage say — while everything the answer feeds into runs
+nothing rather than guessing. It stands in for the one question a model is
+asked, what does this passage say, while everything the answer feeds into runs
 identically either way.
 
 ### Or without a Python toolchain
@@ -153,7 +158,7 @@ uv run python -m analyst.mcp_server
 Eight MCP tools: `start_run`, `get_run`, `get_stages`, `list_proposals`,
 `decide`, `commit`, `get_register`, `ingest`. Starting a run, reading it,
 deciding item by item, committing, and folding in a document that arrived
-afterwards — the whole flow, with no step that needs a terminal.
+afterwards: the whole flow, with no step that needs a terminal.
 
 **A run is named the same way in every surface.** The terminal, HTTP and MCP all
 derive it from the corpus and rules being read, so the same documents land on the
@@ -224,7 +229,7 @@ uv run pytest
 
 A model reports a value and the text it read it from. That text is then **located
 in the source**. If it cannot be found, the answer is dropped rather than
-recorded — a value whose quote is not in the document is invented, however
+recorded. A value whose quote is not in the document is invented, however
 plausible it reads.
 
 Matching is exact, then whitespace-insensitive, and stops there. Fuzzier matching
@@ -240,7 +245,7 @@ def __post_init__(self) -> None:
 ```
 
 `Fact`, `Finding`, `Obligation` and `Proposal` all do this. An uncited claim is
-not rejected later — it cannot be constructed.
+not rejected later: it cannot be constructed.
 
 ## How it resists documents that give orders
 
@@ -255,7 +260,7 @@ glance; a missed one puts hostile text into a prompt.
 
 A quarantined document is still read, with the hostile passages removed, so one
 sentence cannot hide the ordinary content around it. The sample corpus contains a
-file note demanding that a discrepancy go unreported — and the discrepancy is
+file note demanding that a discrepancy go unreported, and the discrepancy is
 reported.
 
 ## Design
@@ -300,7 +305,7 @@ facts that are already grounded.
 ## Formats
 
 `.md`, `.txt`, `.docx`, `.pdf`. Anything else is refused by name rather than read
-as bytes and half-understood. Text only — layout and images are discarded,
+as bytes and half-understood. Text only: layout and images are discarded,
 because every claim is located by character offset and the text a citation points
 into has to be the text the model was shown.
 
